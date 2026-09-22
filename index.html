@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trading Salary Tracker</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f7;color:#17202a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.wrap{max-width:820px;margin:auto;padding:16px}.hero,.card{border-radius:18px}.hero{background:#111827;color:#fff;padding:20px;margin-bottom:14px}.hero h1{margin:0 0 5px}.hero p{margin:0;color:#cbd5e1;font-size:13px}
+.card{background:#fff;padding:17px;margin:13px 0;box-shadow:0 2px 12px #0001}.drop{border:2px dashed #cbd2da;border-radius:14px;padding:25px;text-align:center;cursor:pointer}.drop strong{display:block;margin-bottom:5px}.muted,.note{color:#6b7280;font-size:13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:600px){.grid{grid-template-columns:1fr}}
+label{display:block;font-size:13px;font-weight:650;margin-bottom:6px}input{width:100%;padding:11px;border:1px solid #d5dbe2;border-radius:10px;font-size:16px}
+button{width:100%;border:0;border-radius:11px;padding:12px;background:#111827;color:#fff;font-weight:700;font-size:15px;margin-top:12px}.danger{background:#eee;color:#111}
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.kpi{background:#f7f8fa;padding:13px;border-radius:13px}.kpi b{display:block;font-size:20px;margin-top:4px}
+.row{display:flex;justify-content:space-between;margin:9px 0}.big{font-size:30px;font-weight:750}.progress{height:11px;background:#e5e7eb;border-radius:9px;overflow:hidden}.bar{height:100%;background:#111827;width:0}
+canvas{width:100%;height:330px;background:#0f172a;border-radius:12px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:8px 5px;border-bottom:1px solid #eee;text-align:left}th{color:#6b7280}
+.ok{color:#18794e;font-weight:700}.err{color:#b42318;font-weight:700}.tag{display:inline-block;background:#eef2ff;padding:5px 9px;border-radius:99px;font-size:12px;margin-top:8px}
+</style>
+</head>
+<body><div class="wrap">
+
+<div class="hero">
+<h1>Trading Tracker</h1>
+
+
+</div>
+
+<div class="card">
+<div class="drop" id="drop">
+<label for="pdf" style="display:block;cursor:pointer">
+<strong>Pilih PDF Riwayat Posisi Futures Binance</strong>
+<span class="muted">Ketuk di sini untuk memilih PDF</span>
+</label>
+<input id="pdf" type="file" accept=".pdf,application/pdf" style="display:none">
+</div>
+<div id="status" class="note" style="margin-top:10px">Belum ada PDF bulan ini.</div>
+</div>
+
+<div class="card">
+<div class="grid">
+<div><label>Modal awal (USDT)</label><input id="start" type="number" value="100" step="0.01"></div>
+<div><label>Target modal (USDT)</label><input id="target" type="number" value="1000" step="0.01"></div>
+<div><label>Cost bulan ini (USDT)</label><input id="cost" type="number" value="0" min="0" step="0.01"></div>
+<div><label>Gaji dari profit bersih (%)</label><input id="salaryPct" type="number" value="50" min="0" max="100" step="1"></div>
+</div>
+<button id="save">Simpan bulan ini</button>
+<button class="danger" id="clear">Hapus semua riwayat</button>
+</div>
+
+<div class="card">
+<div class="kpis">
+<div class="kpi"><span class="muted">Posisi dari PDF</span><b id="trades">0</b></div>
+<div class="kpi"><span class="muted">PNL bulan ini</span><b id="pnl">0.00 USDT</b></div>
+<div class="kpi"><span class="muted">Win rate</span><b id="win">0%</b></div>
+<div class="kpi"><span class="muted">Gaji bulan ini</span><b id="salary">0.00 USDT</b></div>
+</div>
+</div>
+
+<div class="card">
+<div class="muted">Perhitungan bulan ini</div>
+<div class="row"><span>PNL dari PDF</span><b id="pnl2">0.00 USDT</b></div>
+<div class="row"><span>Cost</span><b id="cost2">30.00 USDT</b></div>
+<div class="row"><span>Profit bersih</span><b id="net">0.00 USDT</b></div>
+<div class="row"><span>Gaji diambil</span><b id="salary2">0.00 USDT</b></div>
+<div class="row"><span>Masuk kembali ke modal</span><b id="reinvest">0.00 USDT</b></div>
+<div class="row"><span>Modal akhir</span><b id="ending">0.00 USDT</b></div>
+</div>
+
+<div class="card">
+<div class="row"><span>Progress 100 → 1.000 USDT</span><b id="pct">0%</b></div>
+<div class="progress"><div class="bar" id="bar"></div></div>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">Grafik Candle PNL</h3>
+<canvas id="chart" width="800" height="330"></canvas>
+<p class="note">Candle dibuat dari PNL kumulatif per hari transaksi pada PDF: Open, High, Low, Close.</p>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">Riwayat bulanan</h3>
+<div style="overflow:auto"><table><thead><tr><th>Bulan</th><th>Posisi</th><th>PNL</th><th>Cost</th><th>Gaji</th><th>Modal akhir</th></tr></thead><tbody id="history"></tbody></table></div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const $=id=>document.getElementById(id);
+const usdt=n=>Number(n).toFixed(2)+" USDT";
+let hist=JSON.parse(localStorage.getItem("tradingSalaryPDF")||"[]"), current=[];
+
+pdf.onchange=async e=>{
+ const f=e.target.files[0]; if(!f)return;
+ status.textContent="Membaca PDF...";
+ try{
+  const buf=await f.arrayBuffer();
+  const doc=await pdfjsLib.getDocument({data:buf}).promise;
+  let text="";
+  for(let i=1;i<=doc.numPages;i++){
+   const page=await doc.getPage(i), content=await page.getTextContent();
+   text+=content.items.map(x=>x.str).join(" ")+"\\n";
+  }
+  current=parseBinance(text);
+  if(!current.length)throw Error("No trades");
+  status.innerHTML='<span class="ok">✓ PDF berhasil dibaca.</span> '+f.name;
+  calc(); drawCandle();
+ }catch(e){
+  status.innerHTML='<span class="err">PDF tidak terbaca.</span> Pastikan file adalah Riwayat Posisi Futures Binance.';
+ }
+};
+
+function parseBinance(t){
+ let a=[],re=/([A-Z0-9]+USDT)\\s+Cross\\s+(Long|Short)\\s+.*?(-?\\d+(?:\\.\\d+)?)\\s+(\\d{4}-\\d{2}-\\d{2})\\s+\\d{2}:\\d{2}:\\d{2}\\s+(\\d{4}-\\d{2}-\\d{2})\\s+\\d{2}:\\d{2}:\\d{2}\\s+Closed/g,m;
+ while(m=re.exec(t))a.push({symbol:m[1],side:m[2],pnl:+m[3],date:m[4]});
+ return a;
+}
+
+function calc(){
+ const s=+$("start").value||0,t=+$("target").value||1000,c=Math.max(0,+$("cost").value||0),p=+$("salaryPct").value||0;
+ const profit=current.reduce((x,y)=>x+y.pnl,0);
+ const net=profit-c;
+ const salary=Math.max(0,net*p/100);
+ const reinvest=Math.max(0,net-salary);
+ const ending=s+reinvest;
+ $("trades").textContent=current.length;
+ $("pnl").textContent=usdt(profit); $("pnl2").textContent=usdt(profit);
+ $("cost2").textContent=usdt(c); $("win").textContent=current.length?(current.filter(x=>x.pnl>0).length/current.length*100).toFixed(1)+"%":"0%";
+ $("salary").textContent=usdt(salary); $("salary2").textContent=usdt(salary);
+ $("net").textContent=usdt(net); $("reinvest").textContent=usdt(reinvest); $("ending").textContent=usdt(ending);
+ const q=Math.max(0,Math.min(100,(ending-s)/(t-s)*100)); $("pct").textContent=q.toFixed(1)+"%"; $("bar").style.width=q+"%";
+ return {profit,salary,ending};
+}
+
+save.onclick=()=>{
+ if(!current.length){alert("Upload PDF dulu.");return}
+ const x=calc(),m=new Date().toLocaleDateString("id-ID",{month:"long",year:"numeric"});
+ hist.push({m,n:current.length,p:x.profit,c:+$("cost").value||0,s:x.salary,e:x.ending});
+ localStorage.setItem("tradingSalaryPDF",JSON.stringify(hist));
+ $("start").value=x.ending.toFixed(2);
+ $("cost").value="0";
+ current=[];pdf.value="";
+ status.textContent="Bulan tersimpan. Upload PDF bulan berikutnya.";
+ render();
+};
+
+clear.onclick=()=>{
+ if(confirm("Hapus semua riwayat aplikasi?")){
+  hist=[];localStorage.removeItem("tradingSalaryPDF");render();
+ }
+};
+
+document.querySelectorAll('input[type=number]').forEach(x=>x.oninput=calc);
+
+function render(){
+ $("history").innerHTML=hist.slice().reverse().map(x=>`<tr><td>${x.m}</td><td>${x.n}</td><td>${usdt(x.p)}</td><td>${usdt(x.c||0)}</td><td>${usdt(x.s)}</td><td>${usdt(x.e)}</td></tr>`).join("");
+ calc();drawCandle();
+}
+
+function drawCandle(){
+ const cv=$("chart"),ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
+ ctx.clearRect(0,0,W,H);ctx.fillStyle="#0f172a";ctx.fillRect(0,0,W,H);
+ if(!current.length){ctx.fillStyle="#94a3b8";ctx.font="15px sans-serif";ctx.fillText("Upload PDF untuk melihat candle PNL",25,45);return}
+ let cum=0,days={};
+ current.forEach(x=>{cum+=x.pnl;(days[x.date]??=[]).push(cum)});
+ let cs=[],prev=0;
+ for(const [date,vals] of Object.entries(days)){
+  const open=prev,close=vals.at(-1),high=Math.max(open,...vals),low=Math.min(open,...vals);
+  cs.push({date,open,high,low,close});prev=close;
+ }
+ let mn=Math.min(0,...cs.map(x=>x.low)),mx=Math.max(0,...cs.map(x=>x.high));
+ if(mn===mx){mn-=1;mx+=1}
+ const L=52,R=12,T=18,B=30,ph=H-T-B,sx=(W-L-R)/cs.length,py=v=>T+(mx-v)/(mx-mn)*ph;
+ ctx.font="11px sans-serif";ctx.strokeStyle="#293548";ctx.fillStyle="#94a3b8";
+ for(let i=0;i<5;i++){let y=T+ph*i/4;ctx.beginPath();ctx.moveTo(L,y);ctx.lineTo(W-R,y);ctx.stroke();ctx.fillText((mx-(mx-mn)*i/4).toFixed(1),8,y+4)}
+ cs.forEach((x,i)=>{
+  let X=L+sx*i+sx/2,o=py(x.open),cl=py(x.close),hi=py(x.high),lo=py(x.low),up=x.close>=x.open;
+  ctx.strokeStyle=up?"#35c759":"#ff453a";ctx.fillStyle=ctx.strokeStyle;
+  ctx.beginPath();ctx.moveTo(X,hi);ctx.lineTo(X,lo);ctx.stroke();
+  let y=Math.min(o,cl),h=Math.max(2,Math.abs(cl-o)),w=Math.min(40,Math.max(6,sx*.55));ctx.fillRect(X-w/2,y,w,h);
+  if(i===0||i===cs.length-1){ctx.fillStyle="#94a3b8";ctx.fillText(x.date.slice(5),X-16,H-10)}
+ });
+}
+render();
+</script>
+</body></html>
