@@ -73,7 +73,7 @@ canvas{width:100%;height:330px;background:#0f172a;border-radius:12px}table{width
 <div class="card">
 <h3 style="margin-top:0">Grafik Candle PNL</h3>
 <canvas id="chart" width="800" height="330"></canvas>
-<p class="note">Candle dibuat dari PNL kumulatif per hari transaksi pada PDF: Open, High, Low, Close.</p>
+<p class="note">1 trade = 1 candle PNL. Open = PNL kumulatif sebelum trade, Close = setelah trade. Wick asli intratrade tidak tersedia di PDF, jadi tidak dibuat secara palsu.</p>
 </div>
 
 <div class="card">
@@ -134,14 +134,14 @@ function parseBinance(t){
   if(!numbers.length)continue;
   const pnl=Number(numbers[numbers.length-1]);
   if(!Number.isFinite(pnl))continue;
-  out.push({symbol:m[1].toUpperCase(),side:m[2],pnl,date:m[4]});
+  out.push({symbol:m[1].toUpperCase(),side:m[2],pnl,date:m[4],time:m[5]});
  }
  // Fallback: parse around every Closed marker if PDF.js changes spacing/order slightly.
  if(!out.length){
   const tokenRe=/([A-Z0-9]+USDT)\s+Cross\s+(Long|Short)\s+([\s\S]*?)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\s+Closed/gi;
   while((m=tokenRe.exec(clean))!==null){
    const nums=m[3].match(/-?\d+(?:\.\d+)?/g)||[];
-   if(nums.length)out.push({symbol:m[1].toUpperCase(),side:m[2],pnl:Number(nums[nums.length-1]),date:m[4]});
+   if(nums.length)out.push({symbol:m[1].toUpperCase(),side:m[2],pnl:Number(nums[nums.length-1]),date:m[4],time:m[5]});
   }
  }
  return out.filter(x=>Number.isFinite(x.pnl));
@@ -170,13 +170,17 @@ function calc(){
 
 function buildCandles(items,startingCum=0){
  if(!items.length)return [];
- let cum=startingCum,days={};
- items.forEach(x=>{cum+=x.pnl;(days[x.date]??=[]).push(cum)});
- let cs=[],prev=startingCum;
- for(const [date,vals] of Object.entries(days)){
-  const open=prev,close=vals.at(-1),high=Math.max(open,...vals),low=Math.min(open,...vals);
-  cs.push({date,open,high,low,close});prev=close;
- }
+ let cum=startingCum,cs=[];
+ items.forEach((x,i)=>{
+  const open=cum;
+  const close=cum+x.pnl;
+  // PDF hanya menyediakan PNL akhir trade, bukan PNL intratrade.
+  // Karena itu jangan mengarang wick: high/low mengikuti body.
+  const high=Math.max(open,close);
+  const low=Math.min(open,close);
+  cs.push({date:x.date,time:x.time||'',symbol:x.symbol||'',open,high,low,close,trade:i+1});
+  cum=close;
+ });
  return cs;
 }
 
