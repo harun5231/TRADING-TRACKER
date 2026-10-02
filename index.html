@@ -148,30 +148,52 @@ function parseBinance(t){
 }
 
 function calc(){
- const s=+$("start").value||0,t=+$("target").value||1000,c=Math.max(0,+$("cost").value||0),p=+$("salaryPct").value||0;
+ const savedEnd=hist.length ? Number(hist[hist.length-1].e) : null;
+ const s=current.length ? (+$("start").value||0) : (savedEnd!==null && Number.isFinite(savedEnd) ? savedEnd : (+$("start").value||0));
+ const t=+$('target').value||1000,c=Math.max(0,+$('cost').value||0),p=+$('salaryPct').value||0;
  const profit=current.reduce((x,y)=>x+y.pnl,0);
  const net=profit-c;
  const salary=Math.max(0,net*p/100);
  const reinvest=Math.max(0,net-salary);
- const ending=s+reinvest;
- $("trades").textContent=current.length;
- $("pnl").textContent=usdt(profit); $("pnl2").textContent=usdt(profit);
- $("cost2").textContent=usdt(c); $("win").textContent=current.length?(current.filter(x=>x.pnl>0).length/current.length*100).toFixed(1)+"%":"0%";
- $("salary").textContent=usdt(salary); $("salary2").textContent=usdt(salary);
- $("net").textContent=usdt(net); $("reinvest").textContent=usdt(reinvest); $("ending").textContent=usdt(ending);
- const q=Math.max(0,Math.min(100,(ending-s)/(t-s)*100)); $("pct").textContent=q.toFixed(1)+"%"; $("bar").style.width=q+"%";
- return {profit,salary,ending};
+ const ending=current.length ? s+reinvest : (savedEnd!==null && Number.isFinite(savedEnd) ? savedEnd : s);
+ $('trades').textContent=current.length;
+ $('pnl').textContent=usdt(profit); $('pnl2').textContent=usdt(profit);
+ $('cost2').textContent=usdt(c); $('win').textContent=current.length?(current.filter(x=>x.pnl>0).length/current.length*100).toFixed(1)+'%':'0%';
+ $('salary').textContent=usdt(salary); $('salary2').textContent=usdt(salary);
+ $('net').textContent=usdt(net); $('reinvest').textContent=usdt(reinvest); $('ending').textContent=usdt(ending);
+ const initial=Number(localStorage.getItem('tradingInitialCapital')) || 100;
+ const denom=t-initial;
+ const q=denom>0?Math.max(0,Math.min(100,(ending-initial)/denom*100)):0;
+ $('pct').textContent=q.toFixed(1)+'%'; $('bar').style.width=q+'%';
+ return {profit,salary,ending,start:s,cost:c,reinvest};
+}
+
+function buildCandles(items,startingCum=0){
+ if(!items.length)return [];
+ let cum=startingCum,days={};
+ items.forEach(x=>{cum+=x.pnl;(days[x.date]??=[]).push(cum)});
+ let cs=[],prev=startingCum;
+ for(const [date,vals] of Object.entries(days)){
+  const open=prev,close=vals.at(-1),high=Math.max(open,...vals),low=Math.min(open,...vals);
+  cs.push({date,open,high,low,close});prev=close;
+ }
+ return cs;
 }
 
 save.onclick=()=>{
- if(!current.length){alert("Upload PDF dulu.");return}
- const x=calc(),m=new Date().toLocaleDateString("id-ID",{month:"long",year:"numeric"});
- hist.push({m,n:current.length,p:x.profit,c:+$("cost").value||0,s:x.salary,e:x.ending});
- localStorage.setItem("tradingSalaryPDF",JSON.stringify(hist));
- $("start").value=x.ending.toFixed(2);
- $("cost").value="0";
- current=[];pdf.value="";
- status.textContent="Bulan tersimpan. Upload PDF bulan berikutnya.";
+ if(!current.length){alert('Upload PDF dulu.');return}
+ const startForMonth=+$('start').value||0;
+ if(!hist.length) localStorage.setItem('tradingInitialCapital',String(startForMonth));
+ const x=calc(),m=new Date().toLocaleDateString('id-ID',{month:'long',year:'numeric'});
+ const record={m,n:current.length,p:x.profit,c:x.cost,s:x.salary,e:x.ending,start:x.start,reinvest:x.reinvest,candle:buildCandles(current)};
+ hist.push(record);
+ localStorage.setItem('tradingSalaryPDF',JSON.stringify(hist));
+ localStorage.setItem('tradingCurrentCapital',String(x.ending));
+ $('start').value=x.ending.toFixed(2);
+ $('cost').value='0';
+ current=[];
+ pdf.value='';
+ status.textContent='Bulan tersimpan. Data bulan ini tetap tersimpan di riwayat. Upload PDF bulan berikutnya.';
  render();
 };
 
@@ -185,32 +207,45 @@ document.querySelectorAll('input[type=number]').forEach(x=>x.oninput=calc);
 
 function render(){
  $("history").innerHTML=hist.slice().reverse().map(x=>`<tr><td>${x.m}</td><td>${x.n}</td><td>${usdt(x.p)}</td><td>${usdt(x.c||0)}</td><td>${usdt(x.s)}</td><td>${usdt(x.e)}</td></tr>`).join("");
- calc();drawCandle();
+ if(!current.length && hist.length){
+  const latest=Number(hist[hist.length-1].e);
+  if(Number.isFinite(latest)) $("start").value=latest.toFixed(2);
+ }
+ calc();
+ drawCandle();
 }
 
 function drawCandle(){
- const cv=$("chart"),ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
- ctx.clearRect(0,0,W,H);ctx.fillStyle="#0f172a";ctx.fillRect(0,0,W,H);
- if(!current.length){ctx.fillStyle="#94a3b8";ctx.font="15px sans-serif";ctx.fillText("Upload PDF untuk melihat candle PNL",25,45);return}
- let cum=0,days={};
- current.forEach(x=>{cum+=x.pnl;(days[x.date]??=[]).push(cum)});
- let cs=[],prev=0;
- for(const [date,vals] of Object.entries(days)){
-  const open=prev,close=vals.at(-1),high=Math.max(open,...vals),low=Math.min(open,...vals);
-  cs.push({date,open,high,low,close});prev=close;
+ const cv=$('chart'),ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
+ ctx.clearRect(0,0,W,H);ctx.fillStyle='#0f172a';ctx.fillRect(0,0,W,H);
+ // Keep every saved month's candles and continue the cumulative PNL across months.
+ let cs=[],offset=0;
+ hist.forEach(r=>{
+  const month=r.candle||[];
+  month.forEach(c=>cs.push({date:c.date,open:c.open+offset,high:c.high+offset,low:c.low+offset,close:c.close+offset}));
+  if(month.length) offset=month[month.length-1].close+offset;
+ });
+ if(current.length){
+  const live=buildCandles(current,offset);
+  cs=cs.concat(live);
  }
+ if(!cs.length){ctx.fillStyle='#94a3b8';ctx.font='15px sans-serif';ctx.fillText('Upload PDF untuk melihat candle PNL',25,45);return}
  let mn=Math.min(0,...cs.map(x=>x.low)),mx=Math.max(0,...cs.map(x=>x.high));
  if(mn===mx){mn-=1;mx+=1}
  const L=52,R=12,T=18,B=30,ph=H-T-B,sx=(W-L-R)/cs.length,py=v=>T+(mx-v)/(mx-mn)*ph;
- ctx.font="11px sans-serif";ctx.strokeStyle="#293548";ctx.fillStyle="#94a3b8";
+ ctx.font='11px sans-serif';ctx.strokeStyle='#293548';ctx.fillStyle='#94a3b8';
  for(let i=0;i<5;i++){let y=T+ph*i/4;ctx.beginPath();ctx.moveTo(L,y);ctx.lineTo(W-R,y);ctx.stroke();ctx.fillText((mx-(mx-mn)*i/4).toFixed(1),8,y+4)}
  cs.forEach((x,i)=>{
   let X=L+sx*i+sx/2,o=py(x.open),cl=py(x.close),hi=py(x.high),lo=py(x.low),up=x.close>=x.open;
-  ctx.strokeStyle=up?"#35c759":"#ff453a";ctx.fillStyle=ctx.strokeStyle;
+  ctx.strokeStyle=up?'#35c759':'#ff453a';ctx.fillStyle=ctx.strokeStyle;
   ctx.beginPath();ctx.moveTo(X,hi);ctx.lineTo(X,lo);ctx.stroke();
   let y=Math.min(o,cl),h=Math.max(2,Math.abs(cl-o)),w=Math.min(40,Math.max(6,sx*.55));ctx.fillRect(X-w/2,y,w,h);
-  if(i===0||i===cs.length-1){ctx.fillStyle="#94a3b8";ctx.fillText(x.date.slice(5),X-16,H-10)}
+  if(i===0||i===cs.length-1){ctx.fillStyle='#94a3b8';ctx.fillText(x.date.slice(5),X-16,H-10)}
  });
+}
+if(hist.length){
+ const latest=Number(hist[hist.length-1].e);
+ if(Number.isFinite(latest)) $("start").value=latest.toFixed(2);
 }
 render();
 </script>
